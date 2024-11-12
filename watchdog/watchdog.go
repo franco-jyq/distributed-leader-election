@@ -110,6 +110,7 @@ func startElection() {
 			conn, err := net.Dial("tcp", fmt.Sprintf("watchdog_%d:800%d", id, id))
 			if err != nil {
 				fmt.Printf("Node %d could not connect to node %d which is in port 800%d", nodeID, id, id)
+				isLeader = true
 				continue
 			}
 			defer conn.Close()
@@ -123,7 +124,7 @@ func startElection() {
 			}
 		}
 	}
-
+	fmt.Println("isLeader", isLeader)
 	if isLeader {
 		leaderID = nodeID
 		fmt.Printf("Node %d is the new leader\n", nodeID)
@@ -131,7 +132,6 @@ func startElection() {
 			if id != nodeID {
 				conn, err := net.Dial("tcp", fmt.Sprintf("watchdog_%d:800%d", id, id))
 				if err != nil {
-					fmt.Printf("No changes")
 					fmt.Printf("Node %d could not connect to node %d\n", nodeID, id)
 					continue
 				}
