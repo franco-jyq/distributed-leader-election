@@ -1,0 +1,41 @@
+services:
+
+  watchdog1:
+    container_name: watchdog_1
+    environment:
+        - WATCHDOG_HOST=1
+    build:
+      context: .
+      dockerfile: watchdog/Dockerfile
+    networks:
+      - watchdog_network
+
+  watchdog2:
+
+    container_name: watchdog_2
+
+    environment:
+        - WATCHDOG_HOST=2
+    build:
+      context: .
+      dockerfile: watchdog/Dockerfile
+    networks:
+      - watchdog_network
+
+
+  watchdog3:
+
+    container_name: watchdog_3
+
+    environment:
+      - WATCHDOG_HOST=3
+    build:
+      context: .
+      dockerfile: watchdog/Dockerfile
+    networks:
+      - watchdog_network
+
+
+networks:
+  watchdog_network:
+    driver: bridge
