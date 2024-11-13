@@ -7,6 +7,10 @@ services:
     build:
       context: .
       dockerfile: watchdog/Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - dummy
     networks:
       - watchdog_network
 
@@ -19,6 +23,10 @@ services:
     build:
       context: .
       dockerfile: watchdog/Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - dummy
     networks:
       - watchdog_network
 
@@ -32,8 +40,20 @@ services:
     build:
       context: .
       dockerfile: watchdog/Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - dummy
     networks:
       - watchdog_network
+
+  dummy:
+      container_name: dummy
+      build:
+        context: .
+        dockerfile: dummy/Dockerfile
+      networks:
+        - watchdog_network
 
 
 networks:

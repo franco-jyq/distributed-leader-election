@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ var (
 	nodeID            int
 	leaderID          int
 	nodes             = []int{1, 2, 3} // List of node IDs
+	isLeaderMutex     sync.Mutex
 	mutex             sync.Mutex
 	heartbeatInterval = 5 * time.Second
 	heartbeatTimeout  = 2 * time.Second
@@ -40,6 +42,9 @@ func main() {
 
 	// Iniciar el proceso de heartbeat en una goroutine
 	go startHeartbeat()
+
+	// Start the leader task in a goroutine
+	go performLeaderTask()
 
 	// Keep the program running
 	select {}
@@ -72,26 +77,27 @@ func handleConnection(conn net.Conn) {
 		fmt.Println("Error reading data:", err)
 		return
 	}
-	//message := string(buf[:n])
 	fields := strings.Split(string(buf[:n]), " ")
 	message := fields[0]
 	fmt.Printf("Node %d received message: %s\n", nodeID, message)
 
 	if message == "ELECTION" {
-		// Responder al mensaje de elección
+		// Respond to the election message
 		conn.Write([]byte("OK"))
 		startElection()
 	} else if message == "COORDINATOR" {
-		// Actualizar el ID del líder
+		// Update the leader ID
 		leaderID, err = strconv.Atoi(fields[1])
 		if err != nil {
 			fmt.Println("Error parsing leader ID:", err)
 			return
 		}
+		isLeaderMutex.Lock()
 		isLeader = (leaderID == nodeID)
+		isLeaderMutex.Unlock()
 		fmt.Printf("Node %d recognizes node %d as leader\n", nodeID, leaderID)
 	} else if message == "HEARTBEAT" {
-		// Responder al mensaje de heartbeat
+		// Respond to the heartbeat message
 		conn.Write([]byte("ALIVE"))
 	}
 }
@@ -101,16 +107,22 @@ func startElection() {
 	defer mutex.Unlock()
 
 	fmt.Printf("Node %d starting election\n", nodeID)
+	isLeaderMutex.Lock()
 	isLeader = true
+	isLeaderMutex.Unlock()
 
 	for _, id := range nodes {
 		if id > nodeID {
+			isLeaderMutex.Lock()
 			isLeader = false
+			isLeaderMutex.Unlock()
 			fmt.Printf("Dialing to port 800%d\n", id)
 			conn, err := net.Dial("tcp", fmt.Sprintf("watchdog_%d:800%d", id, id))
 			if err != nil {
-				fmt.Printf("Node %d could not connect to node %d which is in port 800%d", nodeID, id, id)
+				fmt.Printf("Node %d could not connect to node %d which is in port 800%d\n", nodeID, id, id)
+				isLeaderMutex.Lock()
 				isLeader = true
+				isLeaderMutex.Unlock()
 				continue
 			}
 			defer conn.Close()
@@ -124,7 +136,8 @@ func startElection() {
 			}
 		}
 	}
-	fmt.Println("isLeader", isLeader)
+
+	isLeaderMutex.Lock()
 	if isLeader {
 		leaderID = nodeID
 		fmt.Printf("Node %d is the new leader\n", nodeID)
@@ -140,15 +153,18 @@ func startElection() {
 			}
 		}
 	}
-
+	isLeaderMutex.Unlock()
 }
 
 func startHeartbeat() {
 	for {
 		time.Sleep(heartbeatInterval)
+		isLeaderMutex.Lock()
 		if isLeader {
+			isLeaderMutex.Unlock()
 			continue
 		}
+		isLeaderMutex.Unlock()
 		conn, err := net.Dial("tcp", fmt.Sprintf("watchdog_%d:800%d", leaderID, leaderID))
 		if err != nil {
 			fmt.Printf("Node %d could not connect to leader %d\n", nodeID, leaderID)
@@ -162,5 +178,40 @@ func startHeartbeat() {
 			fmt.Printf("Node %d did not receive heartbeat response from leader %d\n", nodeID, leaderID)
 			startElection()
 		}
+	}
+}
+
+func performLeaderTask() {
+	for {
+		time.Sleep(10 * time.Second) // Adjust the interval as needed
+		isLeaderMutex.Lock()
+		if isLeader {
+			fmt.Printf("Node %d is performing the leader task\n", nodeID)
+			if !pingHost("dummy:80") {
+				fmt.Println("dummy-program is not responding, restarting service...")
+				restartService()
+			}
+			fmt.Println("Ping successful")
+		}
+		isLeaderMutex.Unlock()
+	}
+}
+
+func pingHost(host string) bool {
+	conn, err := net.DialTimeout("tcp", host, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+func restartService() {
+	cmd := exec.Command("docker", "start", "dummy")
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("Error restarting service: %v\n", err)
+	} else {
+		fmt.Println("Service restarted successfully")
 	}
 }
